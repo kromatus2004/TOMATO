@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomato</title>
+<meta name="description" content="Tomato: timer pomodoro com sessões de foco e pausa personalizáveis, contagem regressiva ou progressiva e tela cheia.">
+<meta name="theme-color" content="#FFC23A">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Foco — marigold */
+    --bg: #FFC23A;
+    --bg-deep: #F7A928;
+    --ink: #2E1803;
+    --ink-soft: #6B3F0E;
+    --sun: #F2661B;
+    --sun-glow: #FF8A3D;
+    --paper: #FFF4D6;
+    --line: rgba(46, 24, 3, .16);
+
+    --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+    --d: min(80vw, 46vh, 470px);
+    --ease: cubic-bezier(.22, .8, .24, 1);
+  }
+  body[data-mode="short"] {
+    --bg: #FFDFA3;
+    --bg-deep: #FBCB7A;
+    --sun: #FF9A45;
+    --sun-glow: #FFB36B;
+  }
+  body[data-mode="long"] {
+    --bg: #FFD08F;
+    --bg-deep: #F8B868;
+    --sun: #E8552A;
+    --sun-glow: #F57A45;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(120% 80% at 50% 105%, var(--bg-deep) 0%, transparent 60%),
+      var(--bg);
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.5;
+    transition: background-color .9s var(--ease);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 10px; }
+
+  .app {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: clamp(14px, 2.4vh, 24px) clamp(16px, 4vw, 44px);
+  }
+
+  /* ---------- topo ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.25rem;
+    letter-spacing: -.02em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand i {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--sun); box-shadow: 0 0 0 3px var(--paper);
+    display: inline-block;
+  }
+  .modes {
+    display: flex; gap: 4px; padding: 4px;
+    background: rgba(255, 244, 214, .55);
+    border-radius: 999px;
+  }
+  .modes button {
+    border: 0; background: transparent; cursor: pointer;
+    padding: 8px 16px; border-radius: 999px;
+    font-weight: 600; font-size: .92rem; color: var(--ink-soft);
+    transition: background .3s var(--ease), color .3s;
+  }
+  .modes button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .modes button:hover:not([aria-pressed="true"]) { color: var(--ink); }
+  .tools { display: flex; gap: 6px; }
+  .icon-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    border: 0; background: rgba(255, 244, 214, .55); cursor: pointer;
+    display: grid; place-items: center;
+    transition: background .2s, transform .2s var(--ease);
+  }
+  .icon-btn:hover { background: var(--paper); }
+  .icon-btn:active { transform: scale(.94); }
+  .icon-btn svg { width: 20px; height: 20px; }
+
+  /* ---------- centro ---------- */
+  main {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: clamp(12px, 2.4vh, 28px);
+    padding: 12px 0;
+  }
+  .label {
+    font-weight: 600; font-size: .82rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  .sun {
+    position: relative;
+    width: var(--d); height: var(--d);
+    border-radius: 50%;
+    background: rgba(255, 244, 214, .45);
+    box-shadow: inset 0 0 0 2px var(--line);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .sun .fill {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 100%;
+    background: linear-gradient(180deg, var(--sun-glow) 0%, var(--sun) 55%);
+    transition: height .35s linear, background .9s var(--ease);
+    z-index: -1;
+  }
+  .sun .fill::before {
+    /* linha do horizonte, levemente ondulada pelo brilho */
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+    background: var(--paper); opacity: .7;
+    transition: opacity .3s;
+  }
+  .sun .fill.full::before { opacity: 0;
+  }
+  .sun-inner {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px;
+  }
+  .time {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: calc(var(--d) * .25);
+    line-height: 1;
+    letter-spacing: -.03em;
+    display: flex;
+    font-variation-settings: "opsz" 96;
+  }
+  .time span { display: inline-block; width: .6em; text-align: center; }
+  .time span.colon { width: .3em; transform: translateY(-.06em); }
+  .time.long-min { font-size: calc(var(--d) * .2); }
+  .sub {
+    font-size: calc(var(--d) * .034 + 6px);
+    font-weight: 500; color: var(--ink);
+    opacity: .75;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .message {
+    max-width: 30ch;
+    text-align: center;
+    font-style: italic;
+    font-size: clamp(1.05rem, 1.9vw, 1.3rem);
+    line-height: 1.45;
+    color: var(--ink);
+    min-height: 2.9em;
+    transition: opacity .5s var(--ease), transform .5s var(--ease);
+  }
+  .message.swap { opacity: 0; transform: translateY(6px); }
+
+  .controls { display: flex; align-items: center; gap: 14px; }
+  .play {
+    min-width: 168px; height: 60px; padding: 0 30px;
+    border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--ink); color: var(--paper);
+    font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; letter-spacing: -.01em;
+    box-shadow: 0 10px 24px -12px rgba(46, 24, 3, .6);
+    transition: transform .2s var(--ease), box-shadow .2s;
+  }
+  .play:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -12px rgba(46, 24, 3, .7); }
+  .play:active { transform: translateY(0) scale(.98); }
+
+  .direction {
+    display: inline-flex; padding: 3px; border-radius: 999px;
+    box-shadow: inset 0 0 0 1.5px var(--line);
+  }
+  .direction button {
+    border: 0; background: transparent; cursor: pointer;
+    padding: 6px 14px; border-radius: 999px; font-size: .88rem; font-weight: 500;
+    color: var(--ink-soft);
+  }
+  .direction button[aria-pressed="true"] { background: var(--paper); color: var(--ink); font-weight: 600; }
+
+  /* ---------- rodapé ---------- */
+  footer {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+    font-size: .92rem; color: var(--ink-soft);
+  }
+  .rounds { display: flex; align-items: center; gap: 10px; }
+  .dots { display: flex; gap: 6px; }
+  .dots b {
+    width: 12px; height: 12px; border-radius: 50%;
+    box-shadow: inset 0 0 0 2px var(--ink-soft);
+  }
+  .dots b.done { background: var(--ink); box-shadow: none; }
+  .dots b.now { box-shadow: inset 0 0 0 2px var(--ink); background: var(--sun); }
+  .keys { display: flex; gap: 14px; }
+  kbd {
+    font-family: var(--font-body); font-size: .78rem; font-weight: 600;
+    padding: 1px 7px; border-radius: 6px; background: rgba(255, 244, 214, .6);
+    margin-right: 4px;
+  }
+
+  /* ---------- painel de ajustes ---------- */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(46, 24, 3, .28);
+    opacity: 0; pointer-events: none; transition: opacity .3s;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: min(400px, 100vw);
+    background: var(--paper);
+    padding: 26px 26px 32px;
+    overflow-y: auto;
+    transform: translateX(105%);
+    transition: transform .4s var(--ease);
+    box-shadow: -20px 0 50px -30px rgba(46, 24, 3, .5);
+  }
+  .panel.open { transform: none; }
+  .panel h2 {
+    font-family: var(--font-display); font-weight: 800; font-size: 1.6rem; letter-spacing: -.02em;
+    margin: 0;
+  }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .panel .icon-btn { background: rgba(255, 194, 58, .35); }
+  .group { padding: 18px 0; border-top: 1px solid var(--line); }
+  .group h3 { margin: 0 0 12px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
+  .row > span { font-weight: 500; }
+  .row small { display: block; color: var(--ink-soft); font-size: .82rem; font-weight: 400; }
+  .stepper {
+    display: flex; align-items: center; border-radius: 999px;
+    background: rgba(255, 194, 58, .35);
+  }
+  .stepper button {
+    width: 36px; height: 36px; border: 0; background: transparent; cursor: pointer;
+    border-radius: 50%; font-size: 1.2rem; font-weight: 600;
+  }
+  .stepper button:hover { background: rgba(255, 194, 58, .6); }
+  .stepper input {
+    width: 3.2ch; border: 0; background: transparent; text-align: center;
+    font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--ink);
+    -moz-appearance: textfield;
+  }
+  .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .unit { font-size: .82rem; color: var(--ink-soft); width: 26px; }
+  .switch { position: relative; width: 48px; height: 28px; flex: none; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .switch i {
+    position: absolute; inset: 0; border-radius: 999px; background: rgba(46, 24, 3, .18);
+    transition: background .25s;
+  }
+  .switch i::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+    background: #fff; transition: transform .25s var(--ease);
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+  .switch input:checked + i { background: var(--sun); }
+  .switch input:checked + i::after { transform: translateX(20px); }
+  .switch input:focus-visible + i { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .link-btn {
+    border: 0; background: none; padding: 0; cursor: pointer; text-decoration: underline;
+    text-underline-offset: 3px; color: var(--ink-soft); font-size: .88rem;
+  }
+  textarea {
+    width: 100%; min-height: 120px; resize: vertical;
+    border: 1.5px solid var(--line); border-radius: 12px; background: #fff;
+    padding: 10px 12px; font: inherit; font-size: .92rem; color: var(--ink);
+  }
+
+  /* ---------- tela cheia ---------- */
+  body.fs { --d: min(88vw, 70vh, 820px); }
+  body.fs header .brand, body.fs footer .keys { opacity: 0; pointer-events: none; }
+  .app header, .app footer, .controls, .direction { transition: opacity .6s var(--ease); }
+  body.fs.idle header, body.fs.idle footer, body.fs.idle .controls, body.fs.idle .direction { opacity: 0; }
+  body.fs.idle { cursor: none; }
+
+  .nudge {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px;
+    padding: 10px 12px 10px 18px; border-radius: 18px;
+    background: var(--paper); font-size: .92rem; text-align: center;
+    box-shadow: 0 8px 22px -14px rgba(46, 24, 3, .5);
+  }
+  .nudge[hidden] { display: none; }
+  .nudge-yes {
+    border: 0; cursor: pointer; border-radius: 999px; padding: 7px 16px;
+    background: var(--sun); color: var(--ink); font-weight: 600; font-size: .9rem;
+  }
+  body.fs .nudge { display: none; }
+
+  /* fim de sessão */
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+  .sun.ring { animation: pulse .9s var(--ease) 3; }
+
+  @media (max-width: 640px) {
+    .keys { display: none; }
+    .modes button { padding: 8px 11px; font-size: .85rem; }
+    header { justify-content: center; }
+    .brand { display: none; }
+    footer { justify-content: center; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: .01ms !important; animation: none !important; }
+  }
+</style>
+</head>
+<body data-mode="focus">
+<div class="app">
+  <header>
+    <div class="brand"><i></i>Tomato</div>
+    <nav class="modes" aria-label="Tipo de sessão">
+      <button data-mode="focus" aria-pressed="true">Foco</button>
+      <button data-mode="short" aria-pressed="false">Pausa curta</button>
+      <button data-mode="long" aria-pressed="false">Pausa longa</button>
+    </nav>
+    <div class="tools">
+      <button class="icon-btn" id="fsBtn" aria-label="Tela cheia (F)" title="Tela cheia (F)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" aria-label="Ajustes" title="Ajustes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="label" id="label">Hora de focar</div>
+
+    <div class="sun" id="sun">
+      <div class="fill" id="fill"></div>
+      <div class="sun-inner">
+        <div class="time" id="time" role="timer" aria-live="off"></div>
+        <div class="sub" id="sub"></div>
+      </div>
+    </div>
+
+    <p class="message" id="message"></p>
+
+    <div class="controls">
+      <button class="icon-btn" id="resetBtn" aria-label="Reiniciar sessão (R)" title="Reiniciar sessão (R)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+      <button class="play" id="playBtn">Começar</button>
+      <button class="icon-btn" id="skipBtn" aria-label="Pular para a próxima (S)" title="Pular para a próxima (S)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l10 7-10 7z"/><path d="M19 5v14"/></svg>
+      </button>
+    </div>
+
+    <div class="direction" role="group" aria-label="Sentido da contagem">
+      <button data-dir="down" aria-pressed="true">Regressiva</button>
+      <button data-dir="up" aria-pressed="false">Progressiva</button>
+    </div>
+
+    <div class="nudge" id="nudge" hidden>
+      <span>Quer ser avisado quando o tempo acabar, mesmo em outra aba?</span>
+      <button class="nudge-yes" id="nudgeYes">Ativar avisos</button>
+      <button class="link-btn" id="nudgeNo">Agora não</button>
+    </div>
+  </main>
+
+  <footer>
+    <div class="rounds">
+      <div class="dots" id="dots"></div>
+      <span id="roundText"></span>
+    </div>
+    <span id="today"></span>
+    <div class="keys">
+      <span><kbd>Espaço</kbd>iniciar/pausar</span>
+      <span><kbd>F</kbd>tela cheia</span>
+    </div>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-label="Ajustes" aria-hidden="true">
+  <div class="panel-head">
+    <h2>Ajustes</h2>
+    <button class="icon-btn" id="closePanel" aria-label="Fechar ajustes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <section class="group">
+    <h3 class="label">Duração</h3>
+    <div class="row"><span>Foco</span>
+      <div style="display:flex;align-items:center;gap:6px"><div class="stepper" data-key="focus" data-min="1" data-max="180"></div><span class="unit">min</span></div></div>
+    <div class="row"><span>Pausa curta</span>
+      <div style="display:flex;align-items:center;gap:6px"><div class="stepper" data-key="short" data-min="1" data-max="60"></div><span class="unit">min</span></div></div>
+    <div class="row"><span>Pausa longa</span>
+      <div style="display:flex;align-items:center;gap:6px"><div class="stepper" data-key="long" data-min="1" data-max="90"></div><span class="unit">min</span></div></div>
+    <div class="row"><span>Pausa longa a cada<small>sessões de foco</small></span>
+      <div style="display:flex;align-items:center;gap:6px"><div class="stepper" data-key="rounds" data-min="2" data-max="12"></div><span class="unit"></span></div></div>
+  </section>
+
+  <section class="group">
+    <h3 class="label">Comportamento</h3>
+    <div class="row"><span>Iniciar a próxima sozinho<small>Emenda foco e pausa sem clicar</small></span>
+      <label class="switch"><input type="checkbox" data-key="autoStart"><i></i></label></div>
+    <div class="row"><span>Som ao terminar<small><button class="link-btn" id="testSound">Ouvir o som</button></small></span>
+      <label class="switch"><input type="checkbox" data-key="sound"><i></i></label></div>
+    <div class="row"><span>Notificação do sistema<small>Avisa mesmo com a aba escondida</small></span>
+      <label class="switch"><input type="checkbox" data-key="notify"><i></i></label></div>
+    <div class="row"><span>Mostrar tempo na aba</span>
+      <label class="switch"><input type="checkbox" data-key="titleTime"><i></i></label></div>
+  </section>
+
+  <section class="group">
+    <h3 class="label">Mensagens</h3>
+    <div class="row"><span>Mensagens motivacionais</span>
+      <label class="switch"><input type="checkbox" data-key="messages"><i></i></label></div>
+    <p style="margin:8px 0 6px;font-size:.9rem;color:var(--ink-soft)">Suas mensagens de foco, uma por linha. Elas entram junto com as padrão.</p>
+    <textarea id="customMsgs" placeholder="Ex.: Termina esse capítulo e o café é seu."></textarea>
+  </section>
+
+  <section class="group">
+    <h3 class="label">Histórico</h3>
+    <div class="row"><span id="statsText"></span>
+      <button class="link-btn" id="resetStats">Zerar hoje</button></div>
+  </section>
+</aside>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const APP_NAME = 'Tomato';
+  const store = {
+    get(k, fallback) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  const DEFAULTS = {
+    focus: 25, short: 5, long: 15, rounds: 4,
+    dir: 'down', autoStart: false, sound: true, notify: true, nudgeSeen: false,
+    titleTime: true, messages: true, custom: '',
+  };
+  const settings = { ...DEFAULTS, ...store.get('pomo.settings', {}) };
+  const save = () => store.set('pomo.settings', settings);
+
+  const todayKey = () => new Date().toLocaleDateString('sv'); // AAAA-MM-DD no fuso local
+  let stats = store.get('pomo.stats', { date: todayKey(), count: 0, minutes: 0 });
+  if (stats.date !== todayKey()) stats = { date: todayKey(), count: 0, minutes: 0 };
+
+  const MODE_INFO = {
+    focus: { label: 'Hora de focar', sub: 'foco' },
+    short: { label: 'Respira um pouco', sub: 'pausa curta' },
+    long:  { label: 'Pausa merecida', sub: 'pausa longa' },
+  };
+
+  const MESSAGES = {
+    focus: [
+      'Um bloco de cada vez. Só este aqui importa agora.',
+      'Constância vence intensidade. Você está construindo algo.',
+      'O celular pode esperar 25 minutos. Seu futuro agradece.',
+      'Não precisa ser perfeito, precisa ser feito.',
+      'Cada minuto aqui é um tijolo a mais.',
+      'Foco é escolher o que ignorar.',
+      'Comece pequeno. O embalo vem depois.',
+      'Você já fez coisas mais difíceis que esta.',
+      'Dúvida anotada é dúvida pela metade resolvida.',
+      'O difícil de hoje vira o fácil de amanhã.',
+      'Progresso silencioso também é progresso.',
+      'Mais uma página. Depois mais uma.',
+    ],
+    short: [
+      'Levanta, alonga, bebe água.',
+      'Olhe para longe por 20 segundos. Seus olhos agradecem.',
+      'Pausa também é parte do estudo.',
+      'Respire fundo três vezes. Devagar.',
+      'Bom trabalho. Recarrega e volta.',
+    ],
+    long: [
+      'Ciclo completo. Você merece esse descanso.',
+      'Sai da tela um pouco. Caminha, come algo, respira.',
+      'O cérebro consolida o que aprendeu enquanto descansa.',
+      'Olha quanto você já avançou hoje.',
+    ],
+  };
+
+  const state = {
+    mode: 'focus',
+    round: 1,         // sessão de foco atual dentro do ciclo
+    running: false,
+    endAt: 0,
+    remaining: settings.focus * 60000,
+  };
+
+  const els = {
+    time: $('#time'), sub: $('#sub'), fill: $('#fill'), label: $('#label'),
+    message: $('#message'), play: $('#playBtn'), dots: $('#dots'),
+    roundText: $('#roundText'), today: $('#today'), sun: $('#sun'),
+    panel: $('#panel'), scrim: $('#scrim'), statsText: $('#statsText'),
+  };
+
+  const total = () => settings[state.mode] * 60000;
+
+  /* ---------- render ---------- */
+  let lastShown = '';
+  function fmt(ms) {
+    const s = Math.max(0, ms / 1000);
+    const secs = settings.dir === 'down' ? Math.ceil(s) : Math.floor(s);
+    const m = Math.floor(secs / 60), r = secs % 60;
+    return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+  }
+  function render() {
+    const t = total();
+    const rem = state.running ? Math.max(0, state.endAt - Date.now()) : state.remaining;
+    const elapsed = t - rem;
+    const shown = fmt(settings.dir === 'down' ? rem : elapsed);
+
+    if (shown !== lastShown) {
+      els.time.innerHTML = [...shown].map(c => `<span${c === ':' ? ' class="colon"' : ''}>${c}</span>`).join('');
+      els.time.classList.toggle('long-min', shown.length > 5);
+      els.time.setAttribute('aria-label', shown);
+      lastShown = shown;
+      if (alertTitle) { /* mantém o aviso na aba até a pessoa voltar */ }
+      else if (settings.titleTime && state.running) document.title = `${shown} · ${MODE_INFO[state.mode].sub}`;
+      else document.title = APP_NAME;
+    }
+    const level = settings.dir === 'down' ? rem / t : elapsed / t;
+    els.fill.style.height = (Math.min(1, Math.max(0, level)) * 100).toFixed(2) + '%';
+    els.fill.classList.toggle('full', level >= 0.999);
+
+    const target = settings[state.mode] + ' min';
+    els.sub.textContent = settings.dir === 'down'
+      ? `de ${target}`
+      : `meta: ${target}`;
+  }
+
+  function renderStatic() {
+    document.body.dataset.mode = state.mode;
+    document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === state.mode));
+    document.querySelectorAll('.direction button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === settings.dir));
+    els.label.textContent = MODE_INFO[state.mode].label;
+    els.play.textContent = state.running ? 'Pausar' : (state.remaining < total() ? 'Continuar' : 'Começar');
+
+    els.dots.innerHTML = '';
+    for (let i = 1; i <= settings.rounds; i++) {
+      const b = document.createElement('b');
+      if (i < state.round || (i === state.round && state.mode !== 'focus')) b.className = 'done';
+      else if (i === state.round) b.className = 'now';
+      els.dots.appendChild(b);
+    }
+    els.roundText.textContent = `Sessão ${state.round} de ${settings.rounds}`;
+    const plural = stats.count === 1 ? 'pomodoro' : 'pomodoros';
+    els.today.textContent = `Hoje: ${stats.count} ${plural} · ${stats.minutes} min de foco`;
+    els.statsText.textContent = `${stats.count} ${plural} e ${stats.minutes} min de foco hoje`;
+    lastShown = '';
+    render();
+  }
+
+  /* ---------- mensagens ---------- */
+  let msgTimer = null, lastMsg = '';
+  function pool() {
+    const base = MESSAGES[state.mode];
+    if (state.mode !== 'focus') return base;
+    const custom = settings.custom.split('\n').map(s => s.trim()).filter(Boolean);
+    return base.concat(custom, custom); // as suas aparecem com mais frequência
+  }
+  function nextMessage() {
+    if (!settings.messages) { els.message.textContent = ''; return; }
+    const list = pool();
+    let m;
+    do { m = list[Math.floor(Math.random() * list.length)]; } while (list.length > 1 && m === lastMsg);
+    lastMsg = m;
+    els.message.classList.add('swap');
+    setTimeout(() => { els.message.textContent = m; els.message.classList.remove('swap'); }, 350);
+  }
+  function scheduleMessages() {
+    clearInterval(msgTimer);
+    msgTimer = setInterval(() => { if (state.running) nextMessage(); }, 4 * 60000);
+  }
+
+  /* ---------- controle ---------- */
+  // O relógio bate dentro de um Web Worker: o navegador desacelera timers de
+  // abas escondidas (até 1 min de atraso), mas não os de workers.
+  const clock = (() => {
+    let worker = null, id = null;
+    try {
+      const src = 'let t=null;onmessage=e=>{clearInterval(t);if(e.data)t=setInterval(()=>postMessage(0),200)}';
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      worker.onmessage = () => tick();
+    } catch { worker = null; }
+    return {
+      start() { if (worker) worker.postMessage(1); else { clearInterval(id); id = setInterval(tick, 200); } },
+      stop() { if (worker) worker.postMessage(0); else clearInterval(id); },
+    };
+  })();
+
+  function start() {
+    if (state.running) return;
+    unlockAudio();
+    maybeNudge();
+    state.running = true;
+    state.endAt = Date.now() + state.remaining;
+    clock.start();
+    renderStatic();
+  }
+  function pause() {
+    if (!state.running) return;
+    state.remaining = Math.max(0, state.endAt - Date.now());
+    state.running = false;
+    clock.stop();
+    renderStatic();
+  }
+  function reset() {
+    clock.stop();
+    state.running = false;
+    state.remaining = total();
+    renderStatic();
+  }
+  function setMode(mode, { keepMessage = false } = {}) {
+    clock.stop();
+    state.running = false;
+    state.mode = mode;
+    state.remaining = total();
+    renderStatic();
+    if (!keepMessage) nextMessage();
+  }
+  function advance(completed) {
+    if (state.mode === 'focus') {
+      if (completed) {
+        stats.count++;
+        stats.minutes += settings.focus;
+        store.set('pomo.stats', stats);
+      }
+      setMode(state.round >= settings.rounds ? 'long' : 'short');
+    } else {
+      state.round = state.mode === 'long' ? 1 : Math.min(settings.rounds, state.round + 1);
+      setMode('focus');
+    }
+  }
+  function tick() {
+    if (!state.running) return;
+    if (state.endAt - Date.now() <= 0) {
+      const finished = state.mode;
+      state.remaining = 0;
+      render();
+      clock.stop();
+      state.running = false;
+      celebrate(finished);
+      advance(true);
+      if (settings.autoStart) setTimeout(start, 1200);
+      return;
+    }
+    render();
+  }
+
+  /* ---------- fim de sessão: som + aviso ---------- */
+  let audioCtx = null;
+  function unlockAudio() {
+    if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function chime(focusEnded) {
+    if (!audioCtx) return;
+    // arpejo subindo ao fim do foco, descendo ao fim da pausa; toca duas vezes
+    const up = [659.25, 783.99, 1046.5], down = [1046.5, 783.99, 659.25];
+    const notes = focusEnded ? up : down;
+    const start = audioCtx.currentTime + 0.05;
+    [0, 1.6].forEach(offset => notes.forEach((f, i) => {
+      const t = start + offset + i * 0.2;
+      [['sine', f, 0.28], ['triangle', f * 2, 0.06]].forEach(([type, freq, vol]) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = type; o.frequency.value = freq;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(vol, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t); o.stop(t + 1.4);
+      });
+    }));
+  }
+
+  let alertTitle = false;
+  async function notify(body) {
+    if (!settings.notify || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const opts = { body, icon: 'icon.svg', badge: 'icon.svg', tag: 'pomodoro', renotify: true, silent: settings.sound };
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg) { await reg.showNotification(APP_NAME, opts); return; }
+    } catch {}
+    try {
+      const n = new Notification(APP_NAME, opts);
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch {}
+  }
+  function celebrate(finished) {
+    if (settings.sound) chime(finished === 'focus');
+    els.sun.classList.remove('ring'); void els.sun.offsetWidth; els.sun.classList.add('ring');
+    const body = finished === 'focus'
+      ? `Foco concluído: ${settings.focus} min. Hora da pausa.`
+      : 'Pausa encerrada. Bora voltar?';
+    notify(body);
+    if (document.hidden) {
+      alertTitle = true;
+      document.title = finished === 'focus' ? '⏰ Hora da pausa!' : '⏰ Hora de focar!';
+    }
+  }
+
+  /* ---------- tela cheia ---------- */
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    else document.exitFullscreen?.();
+  }
+  let idleTimer = null;
+  function wake() {
+    document.body.classList.remove('idle');
+    clearTimeout(idleTimer);
+    if (document.body.classList.contains('fs')) {
+      idleTimer = setTimeout(() => document.body.classList.add('idle'), 3000);
+    }
+  }
+  document.addEventListener('fullscreenchange', () => {
+    document.body.classList.toggle('fs', !!document.fullscreenElement);
+    wake();
+  });
+  ['mousemove', 'mousedown', 'keydown', 'touchstart'].forEach(e => document.addEventListener(e, wake, { passive: true }));
+
+  /* ---------- painel ---------- */
+  function openPanel(open) {
+    els.panel.classList.toggle('open', open);
+    els.scrim.classList.toggle('open', open);
+    els.panel.setAttribute('aria-hidden', !open);
+    if (open) $('#closePanel').focus();
+    else $('#settingsBtn').focus();
+  }
+  function applyDuration(key) {
+    // se a sessão desse tipo não começou, atualiza o tempo na hora
+    if (key === state.mode && !state.running && state.remaining === state.lastTotal) state.remaining = total();
+    if (key === 'rounds') state.round = Math.min(state.round, settings.rounds);
+    renderStatic();
+  }
+
+  document.querySelectorAll('.stepper').forEach(st => {
+    const key = st.dataset.key, min = +st.dataset.min, max = +st.dataset.max;
+    st.innerHTML = `<button type="button" aria-label="Diminuir">−</button>
+      <input type="number" inputmode="numeric" min="${min}" max="${max}" value="${settings[key]}" aria-label="${key}">
+      <button type="button" aria-label="Aumentar">+</button>`;
+    const [dec, input, inc] = st.children;
+    const setVal = (v) => {
+      v = Math.round(Math.min(max, Math.max(min, +v || min)));
+      state.lastTotal = total();
+      settings[key] = v; input.value = v; save();
+      applyDuration(key);
+    };
+    dec.onclick = () => setVal(settings[key] - 1);
+    inc.onclick = () => setVal(settings[key] + 1);
+    input.onchange = () => setVal(input.value);
+  });
+
+  document.querySelectorAll('.switch input').forEach(inp => {
+    const key = inp.dataset.key;
+    inp.checked = !!settings[key];
+    inp.onchange = async () => {
+      settings[key] = inp.checked; save();
+      if (key === 'notify' && inp.checked) {
+        const ok = await askNotifyPermission();
+        if (!ok) { inp.checked = settings.notify = false; save(); }
+      }
+      if (key === 'messages') nextMessage();
+      if (key === 'titleTime') { lastShown = ''; render(); }
+    };
+  });
+
+  const customBox = $('#customMsgs');
+  customBox.value = settings.custom;
+  customBox.oninput = () => { settings.custom = customBox.value; save(); };
+
+  $('#resetStats').onclick = () => {
+    stats = { date: todayKey(), count: 0, minutes: 0 };
+    store.set('pomo.stats', stats); renderStatic();
+  };
+
+  /* ---------- eventos ---------- */
+  els.play.onclick = () => state.running ? pause() : start();
+  $('#resetBtn').onclick = reset;
+  $('#skipBtn').onclick = () => advance(false);
+  $('#fsBtn').onclick = toggleFullscreen;
+  $('#settingsBtn').onclick = () => openPanel(true);
+  $('#closePanel').onclick = () => openPanel(false);
+  els.scrim.onclick = () => openPanel(false);
+  document.querySelectorAll('.modes button').forEach(b => b.onclick = () => {
+    if (b.dataset.mode !== state.mode) setMode(b.dataset.mode);
+  });
+  document.querySelectorAll('.direction button').forEach(b => b.onclick = () => {
+    settings.dir = b.dataset.dir; save(); renderStatic();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea')) return;
+    if (e.key === 'Escape' && els.panel.classList.contains('open')) { openPanel(false); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ' && !e.target.matches('button')) { e.preventDefault(); state.running ? pause() : start(); }
+    else if (k === 'f') toggleFullscreen();
+    else if (k === 'r') reset();
+    else if (k === 's') advance(false);
+  });
+
+  /* ---------- convite para ativar avisos ---------- */
+  const nudge = $('#nudge');
+  const canNotify = 'Notification' in window;
+  async function askNotifyPermission() {
+    if (!canNotify) { alert('Este navegador não mostra notificações.'); return false; }
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied') {
+      alert('As notificações estão bloqueadas para este site. Libere no cadeado ao lado do endereço e tente de novo.');
+      return false;
+    }
+    return (await Notification.requestPermission()) === 'granted';
+  }
+  function maybeNudge() {
+    if (settings.nudgeSeen || !canNotify || Notification.permission !== 'default') return;
+    nudge.hidden = false;
+  }
+  function closeNudge() {
+    nudge.hidden = true;
+    settings.nudgeSeen = true; save();
+  }
+  $('#nudgeYes').onclick = async () => {
+    const ok = await askNotifyPermission();
+    settings.notify = ok; save();
+    document.querySelector('.switch input[data-key="notify"]').checked = ok;
+    closeNudge();
+  };
+  $('#nudgeNo').onclick = closeNudge;
+
+  // sem permissão, o interruptor aparece desligado
+  if (!canNotify || Notification.permission !== 'granted') {
+    document.querySelector('.switch input[data-key="notify"]').checked = false;
+  }
+
+  $('#testSound').onclick = () => { unlockAudio(); chime(true); };
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // retoma a contagem certinha quando a aba volta a ficar visível
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (alertTitle) { alertTitle = false; lastShown = ''; render(); }
+    if (state.running) tick();
+  });
+
+  renderStatic();
+  nextMessage();
+  scheduleMessages();
+})();
+</script>
+</body>
+</html>
