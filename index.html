@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tomato</title>
 <meta name="description" content="Tomato: timer pomodoro com sessões de foco e pausa personalizáveis, contagem regressiva ou progressiva e tela cheia.">
-<meta name="theme-color" content="#FFC23A">
+<meta name="theme-color" content="#FF6347">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,32 +13,37 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
 <style>
   :root {
-    /* Foco — marigold */
-    --bg: #FFC23A;
-    --bg-deep: #F7A928;
-    --ink: #2E1803;
-    --ink-soft: #6B3F0E;
-    --sun: #F2661B;
-    --sun-glow: #FF8A3D;
-    --paper: #FFF4D6;
-    --line: rgba(46, 24, 3, .16);
+    /* Foco — tomate maduro */
+    --bg: #FF6347;
+    --bg-deep: #F04A30;
+    --ink: #2B0F08;
+    --ink-soft: #5A1A0E;
+    --sun: #C8261B;
+    --sun-glow: #E23A26;
+    --paper: #FFF1EA;
+    --leaf: #3F8F3A;
+    --leaf-deep: #2B6A29;
+    --line: rgba(43, 15, 8, .18);
 
     --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
     --font-body: "Figtree", "Segoe UI", system-ui, sans-serif;
     --d: min(80vw, 46vh, 470px);
     --ease: cubic-bezier(.22, .8, .24, 1);
   }
+  /* Pausas — o verde da rama */
   body[data-mode="short"] {
-    --bg: #FFDFA3;
-    --bg-deep: #FBCB7A;
-    --sun: #FF9A45;
-    --sun-glow: #FFB36B;
+    --bg: #BFDDA6;
+    --bg-deep: #A8CF8C;
+    --ink-soft: #2F4A1E;
+    --sun: #E0412E;
+    --sun-glow: #F25A3F;
   }
   body[data-mode="long"] {
-    --bg: #FFD08F;
-    --bg-deep: #F8B868;
-    --sun: #E8552A;
-    --sun-glow: #F57A45;
+    --bg: #9CC77E;
+    --bg-deep: #86B868;
+    --ink-soft: #243D16;
+    --sun: #D3301F;
+    --sun-glow: #EC4B33;
   }
 
   * { box-sizing: border-box; }
@@ -90,7 +95,7 @@
   }
   .modes {
     display: flex; gap: 4px; padding: 4px;
-    background: rgba(255, 244, 214, .55);
+    background: rgba(255, 241, 234, .55);
     border-radius: 999px;
   }
   .modes button {
@@ -104,7 +109,7 @@
   .tools { display: flex; gap: 6px; }
   .icon-btn {
     width: 44px; height: 44px; border-radius: 50%;
-    border: 0; background: rgba(255, 244, 214, .55); cursor: pointer;
+    border: 0; background: rgba(255, 241, 234, .55); cursor: pointer;
     display: grid; place-items: center;
     transition: background .2s, transform .2s var(--ease);
   }
@@ -123,11 +128,22 @@
     color: var(--ink-soft);
   }
 
+  .tomato { position: relative; margin-top: calc(var(--d) * .08); }
+  .calyx {
+    position: absolute; z-index: 2; pointer-events: none;
+    left: 50%; top: calc(var(--d) * -.1);
+    width: calc(var(--d) * .42);
+    transform: translateX(-50%);
+    filter: drop-shadow(0 3px 4px rgba(43, 15, 8, .25));
+  }
+  .sun.ring + .calyx { animation: wiggle .9s var(--ease) 3; }
+  @keyframes wiggle { 0%, 100% { transform: translateX(-50%) rotate(0); } 30% { transform: translateX(-50%) rotate(-6deg); } 70% { transform: translateX(-50%) rotate(6deg); } }
+
   .sun {
     position: relative;
     width: var(--d); height: var(--d);
     border-radius: 50%;
-    background: rgba(255, 244, 214, .45);
+    background: rgba(255, 241, 234, .45);
     box-shadow: inset 0 0 0 2px var(--line);
     overflow: hidden;
     isolation: isolate;
@@ -189,10 +205,10 @@
     border: 0; border-radius: 999px; cursor: pointer;
     background: var(--ink); color: var(--paper);
     font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; letter-spacing: -.01em;
-    box-shadow: 0 10px 24px -12px rgba(46, 24, 3, .6);
+    box-shadow: 0 10px 24px -12px rgba(43, 15, 8, .6);
     transition: transform .2s var(--ease), box-shadow .2s;
   }
-  .play:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -12px rgba(46, 24, 3, .7); }
+  .play:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -12px rgba(43, 15, 8, .7); }
   .play:active { transform: translateY(0) scale(.98); }
 
   .direction {
@@ -222,13 +238,13 @@
   .keys { display: flex; gap: 14px; }
   kbd {
     font-family: var(--font-body); font-size: .78rem; font-weight: 600;
-    padding: 1px 7px; border-radius: 6px; background: rgba(255, 244, 214, .6);
+    padding: 1px 7px; border-radius: 6px; background: rgba(255, 241, 234, .6);
     margin-right: 4px;
   }
 
   /* ---------- painel de ajustes ---------- */
   .scrim {
-    position: fixed; inset: 0; background: rgba(46, 24, 3, .28);
+    position: fixed; inset: 0; background: rgba(43, 15, 8, .28);
     opacity: 0; pointer-events: none; transition: opacity .3s;
   }
   .scrim.open { opacity: 1; pointer-events: auto; }
@@ -240,7 +256,7 @@
     overflow-y: auto;
     transform: translateX(105%);
     transition: transform .4s var(--ease);
-    box-shadow: -20px 0 50px -30px rgba(46, 24, 3, .5);
+    box-shadow: -20px 0 50px -30px rgba(43, 15, 8, .5);
   }
   .panel.open { transform: none; }
   .panel h2 {
@@ -248,7 +264,7 @@
     margin: 0;
   }
   .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
-  .panel .icon-btn { background: rgba(255, 194, 58, .35); }
+  .panel .icon-btn { background: rgba(255, 99, 71, .16); }
   .group { padding: 18px 0; border-top: 1px solid var(--line); }
   .group h3 { margin: 0 0 12px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
@@ -256,13 +272,13 @@
   .row small { display: block; color: var(--ink-soft); font-size: .82rem; font-weight: 400; }
   .stepper {
     display: flex; align-items: center; border-radius: 999px;
-    background: rgba(255, 194, 58, .35);
+    background: rgba(255, 99, 71, .16);
   }
   .stepper button {
     width: 36px; height: 36px; border: 0; background: transparent; cursor: pointer;
     border-radius: 50%; font-size: 1.2rem; font-weight: 600;
   }
-  .stepper button:hover { background: rgba(255, 194, 58, .6); }
+  .stepper button:hover { background: rgba(255, 99, 71, .3); }
   .stepper input {
     width: 3.2ch; border: 0; background: transparent; text-align: center;
     font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--ink);
@@ -273,7 +289,7 @@
   .switch { position: relative; width: 48px; height: 28px; flex: none; }
   .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
   .switch i {
-    position: absolute; inset: 0; border-radius: 999px; background: rgba(46, 24, 3, .18);
+    position: absolute; inset: 0; border-radius: 999px; background: rgba(43, 15, 8, .18);
     transition: background .25s;
   }
   .switch i::after {
@@ -305,12 +321,12 @@
     display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px;
     padding: 10px 12px 10px 18px; border-radius: 18px;
     background: var(--paper); font-size: .92rem; text-align: center;
-    box-shadow: 0 8px 22px -14px rgba(46, 24, 3, .5);
+    box-shadow: 0 8px 22px -14px rgba(43, 15, 8, .5);
   }
   .nudge[hidden] { display: none; }
   .nudge-yes {
     border: 0; cursor: pointer; border-radius: 999px; padding: 7px 16px;
-    background: var(--sun); color: var(--ink); font-weight: 600; font-size: .9rem;
+    background: var(--sun); color: var(--paper); font-weight: 600; font-size: .9rem;
   }
   body.fs .nudge { display: none; }
 
@@ -352,12 +368,18 @@
   <main>
     <div class="label" id="label">Hora de focar</div>
 
-    <div class="sun" id="sun">
-      <div class="fill" id="fill"></div>
-      <div class="sun-inner">
-        <div class="time" id="time" role="timer" aria-live="off"></div>
-        <div class="sub" id="sub"></div>
+    <div class="tomato">
+      <div class="sun" id="sun">
+        <div class="fill" id="fill"></div>
+        <div class="sun-inner">
+          <div class="time" id="time" role="timer" aria-live="off"></div>
+          <div class="sub" id="sub"></div>
+        </div>
       </div>
+      <svg class="calyx" viewBox="0 0 160 70" aria-hidden="true">
+        <path fill="var(--leaf)" d="M80 34 C62 30 40 36 14 52 C38 50 58 48 74 42 C60 50 50 60 44 70 C60 62 72 54 80 44 C88 54 100 62 116 70 C110 60 100 50 86 42 C102 48 122 50 146 52 C120 36 98 30 80 34 Z"/>
+        <path fill="var(--leaf-deep)" d="M76 38 C76 24 78 12 84 2 C88 4 90 6 90 8 C86 16 84 26 85 38 Z"/>
+      </svg>
     </div>
 
     <p class="message" id="message"></p>

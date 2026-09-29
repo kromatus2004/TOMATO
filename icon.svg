@@ -1,7 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#FFC23A"/>
-  <clipPath id="c"><circle cx="256" cy="256" r="168"/></clipPath>
-  <circle cx="256" cy="256" r="168" fill="#FFF4D6" opacity=".55"/>
-  <rect x="0" y="236" width="512" height="276" fill="#F2661B" clip-path="url(#c)"/>
-  <rect x="80" y="232" width="352" height="10" fill="#FFF4D6" clip-path="url(#c)"/>
+  <rect width="512" height="512" rx="112" fill="#FF6347"/>
+  <circle cx="256" cy="286" r="160" fill="#C8261B"/>
+  <path fill="#E23A26" opacity=".6" d="M150 250 a110 110 0 0 1 90 -80 a130 130 0 0 0 -90 80 z"/>
+  <g transform="translate(256 132) scale(1.5) translate(-80 -34)">
+    <path fill="#3F8F3A" d="M80 34 C62 30 40 36 14 52 C38 50 58 48 74 42 C60 50 50 60 44 70 C60 62 72 54 80 44 C88 54 100 62 116 70 C110 60 100 50 86 42 C102 48 122 50 146 52 C120 36 98 30 80 34 Z"/>
+    <path fill="#2B6A29" d="M76 38 C76 24 78 12 84 2 C88 4 90 6 90 8 C86 16 84 26 85 38 Z"/>
+  </g>
 </svg>
