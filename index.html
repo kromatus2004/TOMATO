@@ -46,6 +46,15 @@
     --sun-glow: #EC4B33;
   }
 
+  /* Livre — laranja, fora do ciclo */
+  body[data-mode="free"] {
+    --bg: #FFA43A;
+    --bg-deep: #FF8F1F;
+    --ink-soft: #5A2A05;
+    --sun: #D0311C;
+    --sun-glow: #E8492B;
+  }
+
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
@@ -317,6 +326,40 @@
   body.fs.idle header, body.fs.idle footer, body.fs.idle .controls, body.fs.idle .direction { opacity: 0; }
   body.fs.idle { cursor: none; }
 
+  .modes-sep { width: 1.5px; margin: 8px 4px; background: var(--line); }
+
+  .presets {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+    max-width: 560px; min-height: 2.9em; align-content: center;
+  }
+  .presets[hidden] { display: none; }
+  .presets > button {
+    border: 0; cursor: pointer; border-radius: 999px; padding: 7px 14px;
+    background: rgba(255, 241, 234, .5); font-weight: 600; font-size: .9rem;
+    transition: background .2s, opacity .2s;
+  }
+  .presets > button:hover:not(:disabled) { background: var(--paper); }
+  .presets > button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .presets > button:disabled { opacity: .45; cursor: default; }
+  .custom-time { display: flex; align-items: center; gap: 8px; flex-basis: 100%; justify-content: center; }
+  .custom-time[hidden] { display: none; }
+  .custom-time label { display: flex; align-items: center; gap: 5px; font-weight: 500; }
+  .custom-time input {
+    width: 4.2ch; padding: 6px 4px; border: 0; border-radius: 10px; text-align: center;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--font-display); font-weight: 700; font-size: 1.05rem;
+    -moz-appearance: textfield;
+  }
+  .custom-time input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .custom-ok {
+    border: 0; cursor: pointer; border-radius: 999px; padding: 7px 16px;
+    background: var(--ink); color: var(--paper); font-weight: 600; font-size: .9rem;
+  }
+  body[data-mode="free"] #skipBtn { visibility: hidden; }
+  body[data-mode="free"] .rounds { display: none; }
+  body.fs.idle .presets { opacity: 0; }
+  .presets { transition: opacity .6s var(--ease); }
+
   .nudge {
     display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px;
     padding: 10px 12px 10px 18px; border-radius: 18px;
@@ -354,6 +397,8 @@
       <button data-mode="focus" aria-pressed="true">Foco</button>
       <button data-mode="short" aria-pressed="false">Pausa curta</button>
       <button data-mode="long" aria-pressed="false">Pausa longa</button>
+      <span class="modes-sep" aria-hidden="true"></span>
+      <button data-mode="free" aria-pressed="false" title="Cronômetro livre, fora do ciclo pomodoro">Livre</button>
     </nav>
     <div class="tools">
       <button class="icon-btn" id="fsBtn" aria-label="Tela cheia (F)" title="Tela cheia (F)">
@@ -383,6 +428,22 @@
     </div>
 
     <p class="message" id="message"></p>
+
+    <div class="presets" id="presets" role="group" aria-label="Duração do cronômetro" hidden>
+      <button data-sec="300">5 min</button>
+      <button data-sec="600">10 min</button>
+      <button data-sec="900">15 min</button>
+      <button data-sec="1500">25 min</button>
+      <button data-sec="2700">45 min</button>
+      <button data-sec="3600">1 h</button>
+      <button data-sec="0" id="noLimit">Sem limite</button>
+      <button id="customToggle" aria-expanded="false">Outro</button>
+      <form class="custom-time" id="customTime" hidden>
+        <label><input type="number" id="cMin" min="0" max="999" inputmode="numeric" aria-label="Minutos"> min</label>
+        <label><input type="number" id="cSec" min="0" max="59" inputmode="numeric" aria-label="Segundos"> s</label>
+        <button type="submit" class="custom-ok">Definir</button>
+      </form>
+    </div>
 
     <div class="controls">
       <button class="icon-btn" id="resetBtn" aria-label="Reiniciar sessão (R)" title="Reiniciar sessão (R)">
@@ -480,6 +541,7 @@
     focus: 25, short: 5, long: 15, rounds: 4,
     dir: 'down', autoStart: false, sound: true, notify: true, nudgeSeen: false,
     titleTime: true, messages: true, custom: '',
+    free: 600, freeDir: 'down', // cronômetro livre: duração em segundos (0 = sem limite)
   };
   const settings = { ...DEFAULTS, ...store.get('pomo.settings', {}) };
   const save = () => store.set('pomo.settings', settings);
@@ -492,6 +554,7 @@
     focus: { label: 'Hora de focar', sub: 'foco' },
     short: { label: 'Respira um pouco', sub: 'pausa curta' },
     long:  { label: 'Pausa merecida', sub: 'pausa longa' },
+    free:  { label: 'Cronômetro livre', sub: 'cronômetro' },
   };
 
   const MESSAGES = {
@@ -530,6 +593,8 @@
     running: false,
     endAt: 0,
     remaining: settings.focus * 60000,
+    alerted: false,   // livre progressivo: já avisou que chegou no tempo
+    done: false,      // livre regressivo: acabou de zerar
   };
 
   const els = {
@@ -539,21 +604,35 @@
     panel: $('#panel'), scrim: $('#scrim'), statsText: $('#statsText'),
   };
 
-  const total = () => settings[state.mode] * 60000;
+  const isFree = () => state.mode === 'free';
+  const dir = () => isFree() ? settings.freeDir : settings.dir;
+  // no livre progressivo o cronômetro segue contando depois do tempo definido
+  const overflows = () => isFree() && settings.freeDir === 'up';
+  const total = () => isFree() ? settings.free * 1000 : settings[state.mode] * 60000;
 
   /* ---------- render ---------- */
   let lastShown = '';
+  const pad = (n) => String(n).padStart(2, '0');
   function fmt(ms) {
     const s = Math.max(0, ms / 1000);
-    const secs = settings.dir === 'down' ? Math.ceil(s) : Math.floor(s);
-    const m = Math.floor(secs / 60), r = secs % 60;
-    return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+    const secs = dir() === 'down' ? Math.ceil(s) : Math.floor(s);
+    const h = Math.floor(secs / 3600), m = Math.floor(secs % 3600 / 60), r = secs % 60;
+    return h ? `${h}:${pad(m)}:${pad(r)}` : `${pad(m)}:${pad(r)}`;
+  }
+  function fmtDur(ms) {
+    const secs = Math.round(ms / 1000);
+    const h = Math.floor(secs / 3600), m = Math.floor(secs % 3600 / 60), s = secs % 60;
+    return [h && `${h} h`, m && `${m} min`, s && `${s} s`].filter(Boolean).join(' ') || '0 s';
+  }
+  function currentRemaining() {
+    const rem = state.running ? state.endAt - Date.now() : state.remaining;
+    return overflows() ? rem : Math.max(0, rem);
   }
   function render() {
     const t = total();
-    const rem = state.running ? Math.max(0, state.endAt - Date.now()) : state.remaining;
+    const rem = currentRemaining();
     const elapsed = t - rem;
-    const shown = fmt(settings.dir === 'down' ? rem : elapsed);
+    const shown = fmt(dir() === 'down' ? rem : elapsed);
 
     if (shown !== lastShown) {
       els.time.innerHTML = [...shown].map(c => `<span${c === ':' ? ' class="colon"' : ''}>${c}</span>`).join('');
@@ -564,22 +643,32 @@
       else if (settings.titleTime && state.running) document.title = `${shown} · ${MODE_INFO[state.mode].sub}`;
       else document.title = APP_NAME;
     }
-    const level = settings.dir === 'down' ? rem / t : elapsed / t;
+    // sem limite, o tomate enche uma vez por minuto, como um ponteiro de segundos
+    const level = dir() === 'down' ? rem / t
+      : t === 0 ? (elapsed % 60000) / 60000
+      : elapsed / t;
     els.fill.style.height = (Math.min(1, Math.max(0, level)) * 100).toFixed(2) + '%';
     els.fill.classList.toggle('full', level >= 0.999);
 
-    const target = settings[state.mode] + ' min';
-    els.sub.textContent = settings.dir === 'down'
-      ? `de ${target}`
-      : `meta: ${target}`;
+    const target = fmtDur(t);
+    els.sub.textContent =
+        dir() === 'down' ? `de ${target}`
+      : !isFree() ? `meta: ${target}`
+      : t === 0 ? 'sem limite'
+      : elapsed >= t ? `passou de ${target}`
+      : `aviso em ${target}`;
   }
 
   function renderStatic() {
     document.body.dataset.mode = state.mode;
     document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === state.mode));
-    document.querySelectorAll('.direction button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === settings.dir));
-    els.label.textContent = MODE_INFO[state.mode].label;
+    document.querySelectorAll('.direction button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === dir()));
+    els.label.textContent =
+        isFree() && state.done ? 'Tempo esgotado'
+      : isFree() && state.alerted ? 'Tempo atingido · seguindo'
+      : MODE_INFO[state.mode].label;
     els.play.textContent = state.running ? 'Pausar' : (state.remaining < total() ? 'Continuar' : 'Começar');
+    renderPresets();
 
     els.dots.innerHTML = '';
     for (let i = 1; i <= settings.rounds; i++) {
@@ -605,6 +694,8 @@
     return base.concat(custom, custom); // as suas aparecem com mais frequência
   }
   function nextMessage() {
+    els.message.hidden = isFree();
+    if (isFree()) return;
     if (!settings.messages) { els.message.textContent = ''; return; }
     const list = pool();
     let m;
@@ -639,13 +730,14 @@
     unlockAudio();
     maybeNudge();
     state.running = true;
+    state.done = false;
     state.endAt = Date.now() + state.remaining;
     clock.start();
     renderStatic();
   }
   function pause() {
     if (!state.running) return;
-    state.remaining = Math.max(0, state.endAt - Date.now());
+    state.remaining = currentRemaining();
     state.running = false;
     clock.stop();
     renderStatic();
@@ -654,6 +746,7 @@
     clock.stop();
     state.running = false;
     state.remaining = total();
+    state.alerted = state.done = false;
     renderStatic();
   }
   function setMode(mode, { keepMessage = false } = {}) {
@@ -661,10 +754,12 @@
     state.running = false;
     state.mode = mode;
     state.remaining = total();
+    state.alerted = state.done = false;
     renderStatic();
     if (!keepMessage) nextMessage();
   }
   function advance(completed) {
+    if (isFree()) return; // o livre não faz parte do ciclo
     if (state.mode === 'focus') {
       if (completed) {
         stats.count++;
@@ -679,13 +774,31 @@
   }
   function tick() {
     if (!state.running) return;
-    if (state.endAt - Date.now() <= 0) {
+    const rem = state.endAt - Date.now();
+
+    if (overflows()) {
+      if (total() > 0 && !state.alerted && rem <= 0) {
+        state.alerted = true;
+        celebrate('free');
+        renderStatic();
+      } else render();
+      return;
+    }
+
+    if (rem <= 0) {
       const finished = state.mode;
       state.remaining = 0;
       render();
       clock.stop();
       state.running = false;
-      celebrate(finished);
+      if (!state.alerted) celebrate(finished);
+      if (isFree()) {
+        state.remaining = total();
+        state.alerted = false;
+        state.done = true;
+        renderStatic();
+        return;
+      }
       advance(true);
       if (settings.autoStart) setTimeout(start, 1200);
       return;
@@ -733,17 +846,70 @@
     } catch {}
   }
   function celebrate(finished) {
-    if (settings.sound) chime(finished === 'focus');
+    if (settings.sound) chime(finished !== 'short' && finished !== 'long');
     els.sun.classList.remove('ring'); void els.sun.offsetWidth; els.sun.classList.add('ring');
-    const body = finished === 'focus'
-      ? `Foco concluído: ${settings.focus} min. Hora da pausa.`
-      : 'Pausa encerrada. Bora voltar?';
+    const body =
+        finished === 'focus' ? `Foco concluído: ${settings.focus} min. Hora da pausa.`
+      : finished !== 'free' ? 'Pausa encerrada. Bora voltar?'
+      : settings.freeDir === 'up' ? `Você chegou a ${fmtDur(total())}. O cronômetro segue contando.`
+      : `Tempo encerrado: ${fmtDur(total())}.`;
     notify(body);
     if (document.hidden) {
       alertTitle = true;
-      document.title = finished === 'focus' ? '⏰ Hora da pausa!' : '⏰ Hora de focar!';
+      document.title =
+          finished === 'focus' ? '⏰ Hora da pausa!'
+        : finished === 'free' ? '⏰ Tempo!'
+        : '⏰ Hora de focar!';
     }
   }
+
+  /* ---------- cronômetro livre: durações ---------- */
+  const presets = $('#presets');
+  const customForm = $('#customTime');
+  const customToggle = $('#customToggle');
+  function renderPresets() {
+    presets.hidden = !isFree();
+    if (!isFree()) return;
+    $('#noLimit').hidden = settings.freeDir !== 'up';
+    let matched = false;
+    presets.querySelectorAll('button[data-sec]').forEach(b => {
+      const on = +b.dataset.sec === settings.free && !b.hidden;
+      matched ||= on;
+      b.setAttribute('aria-pressed', on);
+      b.disabled = state.running;
+    });
+    customToggle.disabled = state.running;
+    customToggle.setAttribute('aria-pressed', !matched);
+    customToggle.textContent = matched ? 'Outro' : `Outro: ${fmtDur(settings.free * 1000)}`;
+    if (state.running) customForm.hidden = true;
+    customToggle.setAttribute('aria-expanded', !customForm.hidden);
+  }
+  function setFree(sec) {
+    settings.free = sec; save();
+    reset();
+  }
+  presets.querySelectorAll('button[data-sec]').forEach(b => b.onclick = () => {
+    customForm.hidden = true;
+    setFree(+b.dataset.sec);
+  });
+  customToggle.onclick = () => {
+    customForm.hidden = !customForm.hidden;
+    if (!customForm.hidden) {
+      $('#cMin').value = Math.floor(settings.free / 60);
+      $('#cSec').value = settings.free % 60;
+      $('#cMin').focus(); $('#cMin').select();
+    }
+    renderPresets();
+  };
+  customForm.onsubmit = (e) => {
+    e.preventDefault();
+    const m = Math.max(0, Math.min(999, Math.floor(+$('#cMin').value || 0)));
+    const s = Math.max(0, Math.min(59, Math.floor(+$('#cSec').value || 0)));
+    const sec = m * 60 + s;
+    if (sec === 0 && settings.freeDir === 'down') { $('#cMin').focus(); return; }
+    customForm.hidden = true;
+    setFree(sec);
+  };
 
   /* ---------- tela cheia ---------- */
   function toggleFullscreen() {
@@ -831,7 +997,13 @@
     if (b.dataset.mode !== state.mode) setMode(b.dataset.mode);
   });
   document.querySelectorAll('.direction button').forEach(b => b.onclick = () => {
-    settings.dir = b.dataset.dir; save(); renderStatic();
+    if (!isFree()) { settings.dir = b.dataset.dir; save(); renderStatic(); return; }
+    if (settings.freeDir === b.dataset.dir) return;
+    settings.freeDir = b.dataset.dir;
+    // regressiva precisa de um tempo; "sem limite" só existe na progressiva
+    if (settings.freeDir === 'down' && settings.free === 0) settings.free = 600;
+    save();
+    if (state.running) renderStatic(); else reset();
   });
 
   document.addEventListener('keydown', (e) => {
@@ -842,7 +1014,7 @@
     if (k === ' ' && !e.target.matches('button')) { e.preventDefault(); state.running ? pause() : start(); }
     else if (k === 'f') toggleFullscreen();
     else if (k === 'r') reset();
-    else if (k === 's') advance(false);
+    else if (k === 's' && !isFree()) advance(false);
   });
 
   /* ---------- convite para ativar avisos ---------- */
