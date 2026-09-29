@@ -137,7 +137,7 @@
     color: var(--ink-soft);
   }
 
-  .tomato { position: relative; margin-top: calc(var(--d) * .08); }
+  .tomato { position: relative; isolation: isolate; margin-top: calc(var(--d) * .08); }
   .calyx {
     position: absolute; z-index: 2; pointer-events: none;
     left: 50%; top: calc(var(--d) * -.1);
@@ -253,12 +253,12 @@
 
   /* ---------- painel de ajustes ---------- */
   .scrim {
-    position: fixed; inset: 0; background: rgba(43, 15, 8, .28);
+    position: fixed; inset: 0; z-index: 10; background: rgba(43, 15, 8, .28);
     opacity: 0; pointer-events: none; transition: opacity .3s;
   }
   .scrim.open { opacity: 1; pointer-events: auto; }
   .panel {
-    position: fixed; top: 0; right: 0; bottom: 0;
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 11;
     width: min(400px, 100vw);
     background: var(--paper);
     padding: 26px 26px 32px;
