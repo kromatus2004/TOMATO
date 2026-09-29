@@ -342,6 +342,24 @@
   body.fs.idle header, body.fs.idle footer, body.fs.idle .controls, body.fs.idle .direction { opacity: 0; }
   body.fs.idle { cursor: none; }
 
+  .hint { margin: 6px 0 10px; font-size: .88rem; color: var(--ink-soft); }
+  .sound-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sound-list button {
+    border: 0; cursor: pointer; border-radius: 999px; padding: 8px 14px;
+    background: rgba(255, 99, 71, .16); font-weight: 600; font-size: .9rem;
+    display: inline-flex; align-items: center; gap: 7px;
+    transition: background .2s;
+  }
+  .sound-list button:hover { background: rgba(255, 99, 71, .3); }
+  .sound-list button[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+  .sound-list button.playing::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+    animation: blink .5s ease-in-out infinite alternate;
+  }
+  @keyframes blink { to { opacity: .2; } }
+  .volume-row { margin-top: 8px; }
+  .volume-row input { flex: 1; max-width: 220px; accent-color: var(--sun); }
+
   .modes-sep { width: 1.5px; margin: 8px 4px; background: var(--line); }
 
   .presets {
@@ -521,12 +539,24 @@
     <h3 class="label">Comportamento</h3>
     <div class="row"><span>Iniciar a próxima sozinho<small>Emenda foco e pausa sem clicar</small></span>
       <label class="switch"><input type="checkbox" data-key="autoStart"><i></i></label></div>
-    <div class="row"><span>Som ao terminar<small><button class="link-btn" id="testSound">Ouvir o som</button></small></span>
-      <label class="switch"><input type="checkbox" data-key="sound"><i></i></label></div>
+    <div class="row"><span>Manter a tela acesa<small id="wakeStatus">Depois de começar, a tela não apaga enquanto o Tomato estiver aberto</small></span>
+      <label class="switch"><input type="checkbox" data-key="keepAwake"><i></i></label></div>
     <div class="row"><span>Notificação do sistema<small>Avisa mesmo com a aba escondida</small></span>
       <label class="switch"><input type="checkbox" data-key="notify"><i></i></label></div>
     <div class="row"><span>Mostrar tempo na aba</span>
       <label class="switch"><input type="checkbox" data-key="titleTime"><i></i></label></div>
+  </section>
+
+  <section class="group">
+    <h3 class="label">Som</h3>
+    <div class="row"><span>Tocar ao terminar</span>
+      <label class="switch"><input type="checkbox" data-key="sound"><i></i></label></div>
+    <p class="hint">Toque em um som para ouvir e escolher.</p>
+    <div class="sound-list" id="soundList" role="radiogroup" aria-label="Som do aviso"></div>
+    <div class="row volume-row">
+      <span>Volume</span>
+      <input type="range" id="volume" min="0.05" max="1" step="0.05" aria-label="Volume do aviso">
+    </div>
   </section>
 
   <section class="group">
@@ -558,6 +588,7 @@
     dir: 'down', autoStart: false, sound: true, notify: true, nudgeSeen: false,
     titleTime: true, messages: true, custom: '',
     free: 600, freeDir: 'down', // cronômetro livre: duração em segundos (0 = sem limite)
+    soundName: 'sininho', volume: 0.7, keepAwake: true,
   };
   const settings = { ...DEFAULTS, ...store.get('pomo.settings', {}) };
   const save = () => store.set('pomo.settings', settings);
@@ -746,6 +777,8 @@
     if (state.running) return;
     unlockAudio();
     maybeNudge();
+    wakeWanted = true;
+    holdWake();
     state.running = true;
     state.done = false;
     state.endAt = Date.now() + state.remaining;
@@ -829,24 +862,89 @@
     if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   }
-  function chime(focusEnded) {
-    if (!audioCtx) return;
-    // arpejo subindo ao fim do foco, descendo ao fim da pausa; toca duas vezes
-    const up = [659.25, 783.99, 1046.5], down = [1046.5, 783.99, 659.25];
-    const notes = focusEnded ? up : down;
-    const start = audioCtx.currentTime + 0.05;
-    [0, 1.6].forEach(offset => notes.forEach((f, i) => {
-      const t = start + offset + i * 0.2;
-      [['sine', f, 0.28], ['triangle', f * 2, 0.06]].forEach(([type, freq, vol]) => {
-        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-        o.type = type; o.frequency.value = freq;
-        g.gain.setValueAtTime(0, t);
-        g.gain.linearRampToValueAtTime(vol, t + 0.015);
-        g.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
-        o.connect(g).connect(audioCtx.destination);
-        o.start(t); o.stop(t + 1.4);
+  // Todos os sons são sintetizados na hora, sem arquivos. `up` é true no fim
+  // do foco (e no livre) e false no fim da pausa: os sons melódicos invertem.
+  function tone(out, f, t, { type = 'sine', vol = .3, attack = .01, decay = 1.2, glide = 0 } = {}) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f, t);
+    if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + .09);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    o.connect(g).connect(out);
+    o.start(t); o.stop(t + attack + decay + .05);
+  }
+  // sino: parciais inarmônicos, os agudos morrem antes
+  function bell(out, f, t, vol = .26, decay = 2.2) {
+    [[1, 1], [2, .5], [2.76, .35], [5.4, .18], [8.93, .1]].forEach(([r, a], i) =>
+      tone(out, f * r, t, { vol: vol * a, attack: .004, decay: decay / (1 + i * .6) }));
+  }
+  const SOUNDS = {
+    sininho: { label: 'Sininho', play(out, t, up) {
+      const notes = up ? [659.25, 783.99, 1046.5] : [1046.5, 783.99, 659.25];
+      [0, 1.6].forEach(off => notes.forEach((f, i) => {
+        tone(out, f, t + off + i * .2, { vol: .28, attack: .015, decay: 1.3 });
+        tone(out, f * 2, t + off + i * .2, { type: 'triangle', vol: .06, attack: .015, decay: 1.3 });
+      }));
+      return 3.1;
+    }},
+    cozinha: { label: 'Timer de cozinha', play(out, t) {
+      // o badalo batendo rápido no sininho do timer mecânico
+      [0, 1.9].forEach(off => {
+        for (let i = 0; i < 26; i++) {
+          const v = .09 + Math.random() * .05;
+          [[1, 1], [2.37, .45], [3.9, .25]].forEach(([r, a]) =>
+            tone(out, 1560 * r, t + off + i * .052, { vol: v * a, attack: .002, decay: .35 }));
+        }
       });
-    }));
+      return 3.7;
+    }},
+    campainha: { label: 'Campainha', play(out, t, up) {
+      const [a, b] = up ? [659.25, 523.25] : [523.25, 659.25];
+      [0, 1.8].forEach(off => { bell(out, a, t + off); bell(out, b, t + off + .55); });
+      return 4.2;
+    }},
+    tigela: { label: 'Tigela tibetana', play(out, t, up) {
+      const base = up ? 220 : 196;
+      [0, 3].forEach(off => {
+        [[1, .3], [1.006, .22], [2.71, .1], [5.15, .04]].forEach(([r, v], i) =>
+          tone(out, base * r, t + off, { vol: v, attack: .02, decay: 5.5 / (1 + i * .5) }));
+      });
+      return 8;
+    }},
+    marimba: { label: 'Marimba', play(out, t, up) {
+      const notes = up ? [523.25, 659.25, 783.99, 1046.5] : [1046.5, 783.99, 659.25, 523.25];
+      [0, 1].forEach(off => notes.forEach((f, i) => {
+        const at = t + off + i * .14;
+        tone(out, f, at, { vol: .34, attack: .003, decay: .55 });
+        tone(out, f * 4, at, { vol: .05, attack: .002, decay: .07 });
+      }));
+      return 2.2;
+    }},
+    gotas: { label: 'Gotas', play(out, t) {
+      [0, .22, .38, .7, .86, 1.25, 1.4].forEach(d => {
+        const f = 650 + Math.random() * 650;
+        tone(out, f, t + d, { vol: .3, attack: .003, decay: .2, glide: f * 1.9 });
+      });
+      return 1.8;
+    }},
+    despertador: { label: 'Despertador', play(out, t) {
+      [0, .75, 1.5].forEach(g => {
+        for (let i = 0; i < 4; i++) tone(out, 880, t + g + i * .13, { type: 'square', vol: .07, attack: .004, decay: .08 });
+      });
+      return 2.2;
+    }},
+  };
+  let currentOut = null;
+  function chime(up, name = settings.soundName) {
+    if (!audioCtx) return 0;
+    const sound = SOUNDS[name] || SOUNDS.sininho;
+    if (currentOut) currentOut.disconnect(); // um som novo corta o anterior
+    const out = currentOut = audioCtx.createGain();
+    out.gain.value = settings.volume;
+    out.connect(audioCtx.destination);
+    return sound.play(out, audioCtx.currentTime + .05, up);
   }
 
   let alertTitle = false;
@@ -994,6 +1092,7 @@
         const ok = await askNotifyPermission();
         if (!ok) { inp.checked = settings.notify = false; save(); }
       }
+      if (key === 'keepAwake') settings.keepAwake ? holdWake() : releaseWake();
       if (key === 'messages') nextMessage();
       if (key === 'titleTime') { lastShown = ''; render(); }
     };
@@ -1073,7 +1172,100 @@
     document.querySelector('.switch input[data-key="notify"]').checked = false;
   }
 
-  $('#testSound').onclick = () => { unlockAudio(); chime(true); };
+  /* ---------- escolha do som ---------- */
+  const soundList = $('#soundList');
+  let playingTimer = null;
+  function preview(btn) {
+    unlockAudio();
+    const dur = chime(true);
+    soundList.querySelectorAll('button').forEach(b => b.classList.remove('playing'));
+    clearTimeout(playingTimer);
+    if (btn) {
+      btn.classList.add('playing');
+      playingTimer = setTimeout(() => btn.classList.remove('playing'), dur * 1000);
+    }
+  }
+  Object.entries(SOUNDS).forEach(([key, s]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.dataset.sound = key;
+    b.textContent = s.label;
+    b.onclick = () => {
+      settings.soundName = key; save();
+      soundList.querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', x === b));
+      preview(b);
+    };
+    b.setAttribute('aria-checked', key === settings.soundName);
+    soundList.appendChild(b);
+  });
+  const volume = $('#volume');
+  volume.value = settings.volume;
+  volume.oninput = () => { settings.volume = +volume.value; save(); if (currentOut) currentOut.gain.value = settings.volume; };
+  volume.onchange = () => preview(soundList.querySelector('[aria-checked="true"]'));
+
+  /* ---------- tela acesa (Screen Wake Lock) ---------- */
+  // A mesma trava que players de vídeo usam. Depois do primeiro "Começar"
+  // ela fica ligada — inclusive nas pausas e entre sessões — enquanto a aba
+  // estiver visível. O navegador solta a trava ao esconder a aba; ela volta
+  // sozinha quando a aba reaparece.
+  // Se o navegador não tiver ou recusar a trava, entra o plano B: um vídeo
+  // mudo e quase transparente tocando em loop, que conta como mídia ativa.
+  const wakeSupported = 'wakeLock' in navigator;
+  let wakeLock = null, wakeWanted = false, wakePending = false, videoAwake = null;
+  async function holdWake() {
+    if (!settings.keepAwake || !wakeWanted || document.hidden || wakeLock || wakePending) return;
+    wakePending = true;
+    if (wakeSupported) {
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; updateWakeStatus(); });
+      } catch { wakeLock = null; }
+    }
+    if (wakeLock) stopVideoAwake(); else startVideoAwake();
+    wakePending = false;
+    updateWakeStatus();
+  }
+  function releaseWake() {
+    if (wakeLock) wakeLock.release().catch(() => {});
+    wakeLock = null;
+    stopVideoAwake();
+    updateWakeStatus();
+  }
+  function startVideoAwake() {
+    if (videoAwake) { videoAwake.play().catch(() => {}); return; }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 2;
+      const c2d = canvas.getContext('2d');
+      let n = 0;
+      const paint = () => { c2d.fillStyle = (n++ % 2) ? '#FF6347' : '#FF6448'; c2d.fillRect(0, 0, 2, 2); };
+      paint();
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.loop = true;
+      v.setAttribute('aria-hidden', 'true');
+      v.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;opacity:.01;pointer-events:none;z-index:-1;object-fit:cover';
+      v.srcObject = canvas.captureStream(1);
+      v.paint = setInterval(paint, 1000); // um quadro novo por segundo mantém o vídeo "vivo"
+      document.body.appendChild(v);
+      videoAwake = v;
+      v.play().then(updateWakeStatus).catch(() => {});
+    } catch { videoAwake = null; }
+  }
+  function stopVideoAwake() {
+    if (!videoAwake) return;
+    clearInterval(videoAwake.paint);
+    videoAwake.pause();
+    videoAwake.remove();
+    videoAwake = null;
+  }
+  function updateWakeStatus() {
+    $('#wakeStatus').textContent =
+        wakeLock ? 'Ativo agora: a tela não vai apagar'
+      : videoAwake && !videoAwake.paused ? 'Ativo agora, pelo modo alternativo (vídeo em segundo plano)'
+      : 'Depois de começar, a tela não apaga enquanto o Tomato estiver aberto';
+  }
+  updateWakeStatus();
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -1082,6 +1274,7 @@
   // retoma a contagem certinha quando a aba volta a ficar visível
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
+    holdWake();
     if (alertTitle) { alertTitle = false; lastShown = ''; render(); }
     if (state.running) tick();
   });
