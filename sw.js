@@ -1,5 +1,5 @@
 // Guarda o app para abrir offline e trata o clique nas notificações.
-const CACHE = 'tomato-v3';
+const CACHE = 'tomato-v4';
 const SHELL = ['./', 'index.html', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

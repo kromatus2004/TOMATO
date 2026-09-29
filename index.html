@@ -320,7 +320,23 @@
   }
 
   /* ---------- tela cheia ---------- */
-  body.fs { --d: min(88vw, 70vh, 820px); }
+  /* Tela cheia: o tomate ocupa metade da altura e todo o resto cresce junto,
+     pelo fator --s (altura da tela / 800, calculado no JS). */
+  body.fs {
+    --s: 1;
+    --d: min(52vh, 46vw);
+    overflow: hidden;
+  }
+  body.fs .app { height: 100vh; height: 100dvh; min-height: 0; padding: 2.2vh 3vw; }
+  body.fs header, body.fs footer, body.fs .controls, body.fs .presets, body.fs .label { zoom: var(--s); }
+  body.fs main { gap: 2.4vh; padding: 0; transition: transform .8s var(--ease); }
+  /* sem os botões, o conjunto desce para o centro óptico da tela */
+  body.fs.idle main { transform: translateY(calc(30px * var(--s) + 1.2vh)); }
+  body.fs .message {
+    font-size: calc(1.3rem * var(--s));
+    max-width: 60ch; min-height: 1.45em;
+  }
+  body.fs .direction, body.fs.running .presets { display: none; }
   body.fs header .brand, body.fs footer .keys { opacity: 0; pointer-events: none; }
   .app header, .app footer, .controls, .direction { transition: opacity .6s var(--ease); }
   body.fs.idle header, body.fs.idle footer, body.fs.idle .controls, body.fs.idle .direction { opacity: 0; }
@@ -661,6 +677,7 @@
 
   function renderStatic() {
     document.body.dataset.mode = state.mode;
+    document.body.classList.toggle('running', state.running);
     document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === state.mode));
     document.querySelectorAll('.direction button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === dir()));
     els.label.textContent =
@@ -924,10 +941,16 @@
       idleTimer = setTimeout(() => document.body.classList.add('idle'), 3000);
     }
   }
+  function fitFullscreen() {
+    const s = Math.min(1.9, Math.max(1, innerHeight / 800));
+    document.body.style.setProperty('--s', s.toFixed(3));
+  }
   document.addEventListener('fullscreenchange', () => {
     document.body.classList.toggle('fs', !!document.fullscreenElement);
+    fitFullscreen();
     wake();
   });
+  addEventListener('resize', fitFullscreen);
   ['mousemove', 'mousedown', 'keydown', 'touchstart'].forEach(e => document.addEventListener(e, wake, { passive: true }));
 
   /* ---------- painel ---------- */
